@@ -23,17 +23,19 @@ export const uploadAndIndexContract = async (req, res) => {
                 fileSize: req.file.size,
             });
             let indexedCount = 0;
-            for (const chunk of chunks) {
-                const embedding = await generateEmbedding(chunk.content);
-                await Chunk.create({
-                    contractId: contract.id || contract._id,
-                    content: chunk.content,
-                    pageNumber: chunk.pageNumber,
-                    clauseHeader: chunk.clauseHeader,
-                    embedding
-                });
-                indexedCount++;
-            }
+            // Replace the sequential for loop with Promise.all:
+            await Promise.all(
+                chunks.map(async (chunk) => {
+                    const embedding = await generateEmbedding(chunk.content);
+                    return Chunk.create({
+                        contractId: contract.id || contract._id,
+                        content: chunk.content,
+                        pageNumber: chunk.pageNumber,
+                        clauseHeader: chunk.clauseHeader,
+                        embedding
+                    });
+                })
+            );
             return res.status(201).json({
                 success: true,
                 message: `Contract uploaded and successfully indexed ${indexedCount} vector chunks!`,
