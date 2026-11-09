@@ -36,7 +36,6 @@ export const uploadAndIndexContract = async (req, res) => {
                 fileSize: file.size,
             });
 
-            // Index chunks
             for (const chunk of chunks) {
                 const embedding = await generateEmbedding(chunk.content);
                 await Chunk.create({
@@ -59,10 +58,10 @@ export const uploadAndIndexContract = async (req, res) => {
         });
 
     } catch (error) {
-        console.error("Failed to analyze documents:", error);
-        return res.status(500).json({
+        // Returns the exact parser message with status 400
+        return res.status(400).json({
             success: false,
-            message: error.message || "Failed to analyze documents"
+            message: error.message || "Failed to analyze document."
         });
     }
 };
