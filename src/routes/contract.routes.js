@@ -1,12 +1,23 @@
 import { Router } from "express";
 import { uploadAndIndexContract, getUserContracts } from "../controllers/contract.controller.js";
 import { uploadContractPdf } from "../middlewares/upload.middleware.js";
-import { authLimiter } from "../middlewares/rateLimiter.js";
-
 
 const router = Router();
 
-router.post("/upload", authLimiter, uploadContractPdf, uploadAndIndexContract);
+// Wrapper to return JSON instead of raw HTML on upload errors
+const handleUpload = (req, res, next) => {
+    uploadContractPdf(req, res, (err) => {
+        if (err) {
+            return res.status(400).json({
+                success: false,
+                message: err.message || "File upload failed"
+            });
+        }
+        next();
+    });
+};
+
+router.post("/upload", handleUpload, uploadAndIndexContract);
 router.get("/get", getUserContracts);
 
 export default router;

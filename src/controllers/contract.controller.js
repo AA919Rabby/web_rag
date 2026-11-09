@@ -1,62 +1,71 @@
-import fs from "node:fs";
 import { Contract } from "../models/contract.model.js";
 import { Chunk } from "../models/chunk.model.js";
 import { parsePdfToChunks } from "../utils/pdfParser.js";
 import { generateEmbedding } from "../utils/ai.js";
 
-
 export const uploadAndIndexContract = async (req, res) => {
     try {
-        if (!req.file) {
+        const files = req.files || [];
+
+        if (files.length === 0) {
             return res.status(400).json({
                 success: false,
-                message: "Upload a document file"
+                message: "Please select at least 1 file (up to 5)."
             });
         }
-        const filePath = req.file.path;
-        try {
-            const { chunks } = await parsePdfToChunks(filePath);
-            const contract = await Contract.create({
-                userId: req.user ? (req.user.id || req.user._id) : null,
-                filename: req.file.originalname,
-                filePath: filePath,
-                fileSize: req.file.size,
-            });
-            let indexedCount = 0;
-            // Replace the sequential for loop with Promise.all:
-            await Promise.all(
-                chunks.map(async (chunk) => {
-                    const embedding = await generateEmbedding(chunk.content);
-                    return Chunk.create({
-                        contractId: contract.id || contract._id,
-                        content: chunk.content,
-                        pageNumber: chunk.pageNumber,
-                        clauseHeader: chunk.clauseHeader,
-                        embedding
-                    });
-                })
-            );
-            return res.status(201).json({
-                success: true,
-                message: `Contract uploaded and successfully indexed ${indexedCount} vector chunks!`,
-                data: contract
-            });
-        } catch (error) {
-            console.log("Failed to analysis", error);
-            return res.status(500).json({
+
+        if (files.length > 5) {
+            return res.status(400).json({
                 success: false,
-                message: "Failed to analysis"
+                message: "Maximum 5 files allowed at once."
             });
         }
+
+        const userId = req.user ? (req.user.id || req.user._id) : null;
+        const uploadedContracts = [];
+        let totalIndexedChunks = 0;
+
+        for (const file of files) {
+            // Parse chunks
+            const { chunks } = await parsePdfToChunks(file.path);
+
+            const contract = await Contract.create({
+                userId,
+                filename: file.originalname,
+                filePath: file.path,
+                fileSize: file.size,
+            });
+
+            // Index chunks
+            for (const chunk of chunks) {
+                const embedding = await generateEmbedding(chunk.content);
+                await Chunk.create({
+                    contractId: contract.id || contract._id,
+                    content: chunk.content,
+                    pageNumber: chunk.pageNumber,
+                    clauseHeader: chunk.clauseHeader,
+                    embedding
+                });
+                totalIndexedChunks++;
+            }
+
+            uploadedContracts.push(contract);
+        }
+
+        return res.status(201).json({
+            success: true,
+            message: `Successfully indexed ${uploadedContracts.length} document(s) with ${totalIndexedChunks} vector chunks!`,
+            data: uploadedContracts
+        });
+
     } catch (error) {
-        console.log("An unexpected error occured", error);
+        console.error("Failed to analyze documents:", error);
         return res.status(500).json({
             success: false,
-            message: "Internal Server Error"
+            message: error.message || "Failed to analyze documents"
         });
     }
 };
-
 
 
 export const getUserContracts = async (req, res) => {

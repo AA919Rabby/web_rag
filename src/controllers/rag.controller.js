@@ -2,29 +2,23 @@ import { Chunk } from "../models/chunk.model.js";
 import { Contract } from "../models/contract.model.js";
 import { generateEmbedding, openrouter } from "../utils/ai.js";
 
-
 export const askContractAgent = async (req, res) => {
     try {
-        const { contractId, prompt } = req.body;
-        if (!contractId || !prompt) {
+        const { contractId, contractIds, prompt } = req.body;
+        const targetIds = contractIds || (contractId ? [contractId] : []);
+
+        if (!targetIds.length || !prompt) {
             return res.status(400).json({
                 success: false,
                 message: "ContractId and Prompt cannot be empty"
             });
         }
-        const contract = await Contract.findById(contractId);
-        if (!contract) {
-            return res.status(404).json({
-                success: false,
-                message: "Document not found"
-            });
-        }
 
         const queryVector = await generateEmbedding(prompt);
         const relevantChunks = await Chunk.searchSimilar({
-            contractId,
+            contractIds: targetIds,
             queryEmbedding: queryVector,
-            limit: 4
+            limit: 5
         });
 
         console.log(`🔍 Found ${relevantChunks.length} relevant chunks for this question.`);
@@ -33,14 +27,14 @@ export const askContractAgent = async (req, res) => {
             return res.status(200).json({
                 success: true,
                 data: {
-                    answer: "No relevant information found in the contract for your question. Please make sure the contract was uploaded after embeddings were fixed.",
+                    answer: "No relevant information found across your uploaded document(s).",
                     citations: []
                 }
             });
         }
 
         const context = relevantChunks
-            .map((c) => `[Source: Page ${c.page_number} - ${c.clause_header}]\n${c.content}`)
+            .map((c) => `[Document: ${c.document_name || "Contract"} | Page ${c.page_number} - ${c.clause_header}]\n${c.content}`)
             .join("\n\n---\n\n");
 
         const chatClient = openrouter.chat.completions || openrouter.chat;
@@ -49,11 +43,11 @@ export const askContractAgent = async (req, res) => {
             messages: [
                 {
                     role: "system",
-                    content: "You are an expert Legal and Financial Contract Auditor. Answer the question accurately using ONLY the provided contract excerpts. Cite the exact Page number and Clause for every claim you make (e.g. [Source: Page 1 - Header])."
+                    content: "You are an expert AI Assistant. Answer the question using ONLY the provided excerpts. Cite the Document name and Page number for your claims."
                 },
                 {
                     role: "user",
-                    content: `Contract Context:\n"""\n${context}\n"""\n\nQuestion: "${prompt}"`
+                    content: `Context:\n"""\n${context}\n"""\n\nQuestion: "${prompt}"`
                 }
             ],
             temperature: 0.1
@@ -64,7 +58,11 @@ export const askContractAgent = async (req, res) => {
             success: true,
             data: {
                 answer,
-                citations: relevantChunks.map((c) => ({ page: c.page_number, clause: c.clause_header })),
+                citations: relevantChunks.map((c) => ({
+                    document: c.document_name,
+                    page: c.page_number,
+                    clause: c.clause_header
+                })),
             }
         });
     } catch (error) {
