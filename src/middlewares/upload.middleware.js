@@ -15,13 +15,8 @@ const storage = multer.diskStorage({
     },
 });
 
-// Allow ANY file format
-const fileFilter = (_req, _file, cb) => {
-    cb(null, true);
-};
-
+// Accept ANY document format, max 5 files
 export const uploadContractPdf = multer({
     storage,
-    limits: { fileSize: 25 * 1024 * 1024, files: 5 }, // Max 25MB per file, up to 5 files
-    fileFilter,
-}).any(); // Accepts any field name and any file format
+    limits: { fileSize: 25 * 1024 * 1024, files: 5 }, // 25MB per file, max 5 files
+}).any();
